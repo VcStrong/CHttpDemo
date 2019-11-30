@@ -9,6 +9,7 @@
 #include <unistd.h> // for close
 #include "http.h"
 #include <android/log.h>
+#include "data2.h"
 
 #define LOG_TAG  "C_TAG"
 #define LOGD(...)  __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
@@ -17,7 +18,8 @@
 #define HTTP_POST "POST /%s HTTP/1.1\r\nHOST: %s:%d\r\nAccept: */*\r\n"\
     "Content-Type:application/x-www-form-urlencoded\r\nContent-Length: %zu%s\r\n\r\n%s"
 #define HTTP_GET "GET /%s HTTP/1.1\r\nHOST: %s:%d\r\nAccept: */*%s\r\n\r\n"
-static const char *BASE_URL = "http://172.17.8.100/small/";
+//static const char *BASE_URL = "http://172.17.8.100/small/";
+static const char *BASE_URL = "http://mobile.bwstudent.com/small/";
 
 int http_tcpclient_create(const char *host, int port) {
     struct hostent *he;
@@ -100,19 +102,89 @@ char *http_tcpclient_recv(int socket) {
     int recvnum;
     int length = 0;
     char *data;
-    do{
+    do {
         char d[BUFFER_SIZE] = {'\0'};
         LOGD("哈哈哈哈");
         recvnum = recv(socket, d, BUFFER_SIZE, 0);
-        length+=recvnum;
+        length += recvnum;
         LOGD("哈哈哈哈1");
-        char *a = (char *) malloc(length+1);
+        char *a = (char *) malloc(strlen(data) + strlen(d) + 1);
 
-        strcat(data,d);
-//        sprintf(data,"%s%s", data,d);
-        LOGD("socket本次读取数据长度为：%d，总长度为：%d----本次数据为：%s",recvnum,length,d);
-    }while (recvnum==BUFFER_SIZE);
+        strcpy(a, data);
+        sprintf(data, "%s%s", data, d);
+        LOGD("socket本次读取数据长度为：%d，总长度为：%d----本次数据为：%s", recvnum, length, d);
+    } while (recvnum == BUFFER_SIZE);
     return data;
+}
+
+//自定义Read函数
+//参数一：自己程序的socket
+//返回值：成功返回指向存储有相应内容的动态内存的指针，失败返回NULL
+//注意：1）返回的动态内存指针在不使用的时候应该通过free释放；2）如果不是真的有问题，请不要动，如果读取数据出现问题，请优先检查data2.c中的函数
+char *Read(int socket) {
+    int length = 0, return_length;
+    char buffer[1024];
+    char *Data;
+    PBUFFER header, nowBuffer;//nowBuffer指向正在使用的BUFFER节点
+
+
+    if (NULL != (header = create_EmptyBufferLink()))//创建BUFFER表头
+    {
+        if (NULL == (nowBuffer = append_Buffer_Node(header)))//创建第一个存储响应的BUFFER节点
+        {
+            LOGD("\nappend_Buffer_Node() fail in http.c Read()\n");//节点添加失败直接返回
+            free_Buffer_Link(header);
+            return NULL;
+        }
+
+    } else {
+        LOGD("\ncreate_EmptyBufferLink() fail in http.c Read()\n");//头结点创建失败直接返回
+        return NULL;
+    }
+
+    //每次读取1024个节点存储到buffer中，然后再通过strncpy复制到BUFFER节点当中
+    while ((return_length = read(socket, buffer, 1024)) > 0) {
+        if (return_length == -1) {
+            LOGD("\nreceive wrong!\n");
+            free_Buffer_Link(header);
+            header = NULL;
+            return NULL;
+        } else {
+
+            if (length >= 50176)//如果节点已经快要存满，则新建节点，将相应内容存到新建立的节点当中
+            {
+                nowBuffer->data[length] = '\0';
+                if (NULL == (nowBuffer = append_Buffer_Node(header))) {
+                    LOGD("\nappend_Buffer_Node() fail in http.c Read()\n");//节点添加失败直接返回
+                    free_Buffer_Link(header);
+                    return NULL;
+                }
+                length = 0;
+                strncpy(nowBuffer->data + length, buffer, return_length);
+                length += return_length;
+            } else {
+                strncpy(nowBuffer->data + length, buffer, return_length);
+                length += return_length;
+            }
+        }
+
+    }
+
+    nowBuffer->data[length] = '\0';
+    Data = get_All_Buffer(header);//将BUFFER链表中的内容取出，存储到动态内存当中
+
+    //释放BUFFER链表
+    if (header != NULL) {
+        free_Buffer_Link(header);
+        header = NULL;
+    }
+
+    if (length == 0) {
+        LOGD("no date receive!\n");
+        return NULL;
+    }
+
+    return Data;//返回指向存储有响应内容的动态内存的指针(可能为空)
 }
 
 static int http_tcpclient_send(int socket, char *buff, int size) {
@@ -180,7 +252,7 @@ char *http_post(const char *url, const char *headers, const char *post_str) {
         return NULL;
     }
     //printf("host_addr : %s\tfile:%s\t,%d\n",host_addr,file,port);
-    LOGD("host_addr : %s\tfile:%s\t,%d\n",host_addr,file,port);
+    LOGD("host_addr : %s\tfile:%s\t,%d\n", host_addr, file, port);
 
     socket_fd = http_tcpclient_create(host_addr, port);
     if (socket_fd < 0) {
@@ -189,15 +261,15 @@ char *http_post(const char *url, const char *headers, const char *post_str) {
     }
 
     sprintf(lpbuf, HTTP_POST, file, host_addr, port, strlen(post_str), headers, post_str);
-    LOGD("%s",lpbuf);
+    LOGD("%s", lpbuf);
     if (http_tcpclient_send(socket_fd, lpbuf, strlen(lpbuf)) < 0) {
         LOGD("http_tcpclient_send failed..\n");
         return NULL;
     }
     //printf("发送请求:\n%s\n",lpbuf);
 
-    char *data= http_tcpclient_recv(socket_fd);
-    LOGD("最终结果为：%s",data);
+    char *data = Read(socket_fd);
+    LOGD("最终结果为：%s", data);
     http_tcpclient_close(socket_fd);
 
     return http_parse_result(data);
@@ -235,7 +307,7 @@ char *http_get(const char *url, const char *headers) {
     }
 
     sprintf(lpbuf, HTTP_GET, file, host_addr, port, headers);
-    LOGD("%s",lpbuf);
+    LOGD("%s", lpbuf);
 
     if (http_tcpclient_send(socket_fd, lpbuf, strlen(lpbuf)) < 0) {
         LOGD("http_tcpclient_send failed..\n");
@@ -243,8 +315,8 @@ char *http_get(const char *url, const char *headers) {
     }
     //	printf("发送请求:\n%s\n",lpbuf);
 
-    char *data= http_tcpclient_recv(socket_fd);
-    LOGD("最终结果为：%s",data);
+    char *data = Read(socket_fd);
+    LOGD("最终结果为：%s", data);
     http_tcpclient_close(socket_fd);
 
     return http_parse_result(data);
@@ -268,7 +340,7 @@ char *Jstring2CStr(JNIEnv *env, jstring jstr) {
         rtn[alen] = 0;
     }
     (*env)->ReleaseByteArrayElements(env, barr, ba, 0);
-    if (rtn == NULL){
+    if (rtn == NULL) {
         rtn = "";
     }
     return rtn;
@@ -295,18 +367,18 @@ Java_com_dingtao_common_core_http_NetworkManager_postByJNI(
 JNIEXPORT jstring JNICALL
 Java_com_dingtao_common_core_http_NetworkManager_getByJNI(
         JNIEnv *env,
-        jobject thiz,jstring url, jstring headers) {
+        jobject thiz, jstring url, jstring headers) {
     char *cu = Jstring2CStr(env, url);
-    char * hu = Jstring2CStr(env,headers);
+    char *hu = Jstring2CStr(env, headers);
     char *pu = (char *) malloc(strlen(BASE_URL) + strlen(cu) + 1);
     strcpy(pu, BASE_URL);
     strcat(pu, cu);
     LOGD("GET_URL=%s", pu);
     LOGD("GET_Header : %s", hu);
-    char *result = http_get(pu,hu);
+    char *result = http_get(pu, hu);
     LOGD("GET_Result=%s", result);
 //    if(result==NULL||strlen(result)==0){
-        return (*env)->NewStringUTF(env, result);
+    return (*env)->NewStringUTF(env, result);
 //    }
 //    return (*env)->NewStringUTF(env, result);
 }
