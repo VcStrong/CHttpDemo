@@ -98,32 +98,13 @@ int http_parse_url(const char *url, char *host, char *file, int *port) {
 }
 
 
-char *http_tcpclient_recv(int socket) {
-    int recvnum;
-    int length = 0;
-    char *data;
-    do {
-        char d[BUFFER_SIZE] = {'\0'};
-        LOGD("哈哈哈哈");
-        recvnum = recv(socket, d, BUFFER_SIZE, 0);
-        length += recvnum;
-        LOGD("哈哈哈哈1");
-        char *a = (char *) malloc(strlen(data) + strlen(d) + 1);
-
-        strcpy(a, data);
-        sprintf(data, "%s%s", data, d);
-        LOGD("socket本次读取数据长度为：%d，总长度为：%d----本次数据为：%s", recvnum, length, d);
-    } while (recvnum == BUFFER_SIZE);
-    return data;
-}
-
 //自定义Read函数
 //参数一：自己程序的socket
 //返回值：成功返回指向存储有相应内容的动态内存的指针，失败返回NULL
 //注意：1）返回的动态内存指针在不使用的时候应该通过free释放；2）如果不是真的有问题，请不要动，如果读取数据出现问题，请优先检查data2.c中的函数
 char *Read(int socket) {
     int length = 0, return_length;
-    char buffer[1024];
+    char buffer[BUFFER_SIZE];
     char *Data;
     PBUFFER header, nowBuffer;//nowBuffer指向正在使用的BUFFER节点
 
@@ -143,12 +124,12 @@ char *Read(int socket) {
     }
 
     //每次读取1024个节点存储到buffer中，然后再通过strncpy复制到BUFFER节点当中
-    while ((return_length = read(socket, buffer, 1024)) > 0) {
+    while ((return_length = recv(socket, buffer, BUFFER_SIZE,0)) > 0) {
         if (return_length == -1) {
             LOGD("\nreceive wrong!\n");
             free_Buffer_Link(header);
             header = NULL;
-            return NULL;
+            break;
         } else {
 
             if (length >= 50176)//如果节点已经快要存满，则新建节点，将相应内容存到新建立的节点当中
@@ -157,7 +138,7 @@ char *Read(int socket) {
                 if (NULL == (nowBuffer = append_Buffer_Node(header))) {
                     LOGD("\nappend_Buffer_Node() fail in http.c Read()\n");//节点添加失败直接返回
                     free_Buffer_Link(header);
-                    return NULL;
+                    break;
                 }
                 length = 0;
                 strncpy(nowBuffer->data + length, buffer, return_length);
