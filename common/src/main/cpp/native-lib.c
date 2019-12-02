@@ -123,6 +123,8 @@ char *Read(int socket) {
         return NULL;
     }
 
+    int content_length = -1,header_length=-1;
+
     //每次读取1024个节点存储到buffer中，然后再通过strncpy复制到BUFFER节点当中
     while ((return_length = recv(socket, buffer, BUFFER_SIZE,0)) > 0) {
         if (return_length == -1) {
@@ -131,7 +133,6 @@ char *Read(int socket) {
             header = NULL;
             break;
         } else {
-
             if (length >= 50176)//如果节点已经快要存满，则新建节点，将相应内容存到新建立的节点当中
             {
                 nowBuffer->data[length] = '\0';
@@ -147,13 +148,39 @@ char *Read(int socket) {
                 strncpy(nowBuffer->data + length, buffer, return_length);
                 length += return_length;
             }
+            if (content_length==-1){
+                char *ptmp = (char *) strstr(buffer, "Content-Length");
+                if (!ptmp) {
+                    LOGD("本次数据不包含Conteng-length");
+                }
+                content_length = atoi(ptmp + strlen("Content-Length: "));
+                LOGD("Conteng-length数据长度为：%d", content_length);
+            }
+            nowBuffer->data[length] = '\0';
+            Data = get_All_Buffer(header);
+            LOGD("哈哈：%s",Data);
+            char ptmp = (char *) strstr(Data, "\r\n\r\n");
+            if (!ptmp) {
+                LOGD("ptmp is NULL\n");
+                return NULL;
+            }
+            LOGD("测试指针长度为:%d",strlen(ptmp));
+            char *response = (char *) malloc(strlen(ptmp) + 1);
+            if (!response) {
+                LOGD("malloc failed \n");
+                return NULL;
+            }
+            strcpy(response, ptmp + 4);
+            if (strlen(response)==content_length){
+                return response;
+            }
         }
-
     }
 
     nowBuffer->data[length] = '\0';
     Data = get_All_Buffer(header);//将BUFFER链表中的内容取出，存储到动态内存当中
 
+    LOGD("数据长度为：%d",length);
     //释放BUFFER链表
     if (header != NULL) {
         free_Buffer_Link(header);
@@ -341,7 +368,7 @@ Java_com_dingtao_common_core_http_NetworkManager_postByJNI(
     char *pm = Jstring2CStr(env, params);
     LOGD("Post_Param : %s", pm);
     char *result = http_post(pu, hu, pm);
-    LOGD("Post_Result : %s", result);
+    LOGD("Post_Result长度：%d : %s", strlen(result),result);
     return (*env)->NewStringUTF(env, result);
 }
 
@@ -357,7 +384,7 @@ Java_com_dingtao_common_core_http_NetworkManager_getByJNI(
     LOGD("GET_URL=%s", pu);
     LOGD("GET_Header : %s", hu);
     char *result = http_get(pu, hu);
-    LOGD("GET_Result=%s", result);
+    LOGD("GET_Result长度：%d : %s", strlen(result), result);
 //    if(result==NULL||strlen(result)==0){
     return (*env)->NewStringUTF(env, result);
 //    }
