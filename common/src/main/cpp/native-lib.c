@@ -148,51 +148,48 @@ char *Read(int socket) {
                 strncpy(nowBuffer->data + length, buffer, return_length);
                 length += return_length;
             }
+            //得到content-length所在位置，通过atoi函数得到请求数据的长度
             if (content_length==-1){
                 char *ptmp = (char *) strstr(buffer, "Content-Length");
                 if (!ptmp) {
                     LOGD("本次数据不包含Conteng-length");
                 }
                 content_length = atoi(ptmp + strlen("Content-Length: "));
-                LOGD("Conteng-length数据长度为：%d", content_length);
+                LOGD("Conteng-length数据长度为：%d,指针ptmp:%d", content_length,ptmp);
             }
             nowBuffer->data[length] = '\0';
             Data = get_All_Buffer(header);
             LOGD("哈哈：%s",Data);
-            char ptmp = (char *) strstr(Data, "\r\n\r\n");
-            if (!ptmp) {
-                LOGD("ptmp is NULL\n");
-                return NULL;
-            }
-            LOGD("测试指针长度为:%d",strlen(ptmp));
-            char *response = (char *) malloc(strlen(ptmp) + 1);
-            if (!response) {
-                LOGD("malloc failed \n");
-                return NULL;
-            }
-            strcpy(response, ptmp + 4);
-            if (strlen(response)==content_length){
+            char *p = strstr(Data,"\r\n\r\n");
+            int now_length = strlen(Data) - (p-Data+4);
+            LOGD("测试指针下标位置为:%d;数据位置为：%d;实际数据长度为：%d",p-Data+1,p-Data+4,now_length);
+            //通过得到\r\n\r\n的位置，计算响应内容的长度。
+            // 如果计算得到的长度和content-length相等，则认为http请求结束。
+            if (now_length >= content_length){
+                //释放BUFFER链表
+                if (header != NULL) {
+                    free_Buffer_Link(header);
+                    header = NULL;
+                }
+                //申请响应内容的内存，用于存放数据。
+                char *response = (char *) malloc(now_length+1);
+                if (!response) {
+                    LOGD("malloc failed \n");
+                    return NULL;
+                }
+                LOGD("终于该拷贝了...,指针p:%d",p);
+                strcpy(response, p + 4);
                 return response;
             }
         }
     }
 
-    nowBuffer->data[length] = '\0';
-    Data = get_All_Buffer(header);//将BUFFER链表中的内容取出，存储到动态内存当中
-
-    LOGD("数据长度为：%d",length);
     //释放BUFFER链表
     if (header != NULL) {
         free_Buffer_Link(header);
         header = NULL;
     }
-
-    if (length == 0) {
-        LOGD("no date receive!\n");
-        return NULL;
-    }
-
-    return Data;//返回指向存储有响应内容的动态内存的指针(可能为空)
+    return NULL;//返回指向存储有响应内容的动态内存的指针(可能为空)
 }
 
 static int http_tcpclient_send(int socket, char *buff, int size) {
@@ -280,7 +277,8 @@ char *http_post(const char *url, const char *headers, const char *post_str) {
     LOGD("最终结果为：%s", data);
     http_tcpclient_close(socket_fd);
 
-    return http_parse_result(data);
+    return data;
+//    return http_parse_result(data);
 }
 
 /*
@@ -327,7 +325,8 @@ char *http_get(const char *url, const char *headers) {
     LOGD("最终结果为：%s", data);
     http_tcpclient_close(socket_fd);
 
-    return http_parse_result(data);
+    return data;
+//    return http_parse_result(data);
 }
 
 /*
