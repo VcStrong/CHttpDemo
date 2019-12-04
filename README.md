@@ -7,7 +7,7 @@
 Rxjava+Retrofit版mvp参见：https://github.com/VcStrong/RxRetrofitMVPDemo.git<br/>
 kotlin版mvp参见：https://github.com/VcStrong/KotlinMVPDemo.git<br/>
 
-####注：未实现上传文件，目前仅支持发送普通请求。
+#### 注：未实现上传文件，目前仅支持发送普通请求。
 本项目采用C语言 socket完成http请求，代码在common包下cpp里面；
 解决了socket只能read超时才能完成请求的问题；解决了http响应内容任意大小的问题。
 
